@@ -195,7 +195,30 @@
             badge.onclick = changeWorker;
             badge.style.cursor = 'pointer';
         }
+        // 페이지 로드/새로고침 시 최근 스캔 내역 10건 자동 복원 표시
+        loadRecentScans();
     });
+
+    function loadRecentScans() {
+        fetch('/api/inventory?status=전체&limit=10')
+            .then(res => res.json())
+            .then(data => {
+                if (data.items && data.items.length > 0) {
+                    // 최근 항목 역순으로 표시
+                    const items = data.items.slice(0, 10).reverse();
+                    items.forEach(it => {
+                        addFeedItem({
+                            title: `✅ ${it.customer_name} (접수번호: ${it.item_number})`,
+                            sub: `보관장소: <strong>[ ${it.location_code} ]</strong> | 상태: ${it.status} | 작업자: ${it.worker || '-'}`,
+                            badge: `${it.status}`,
+                            badgeClass: it.status === '보관중' ? 'bg-success' : 'bg-secondary',
+                            time: it.updated_at ? it.updated_at.substring(11, 19) : ''
+                        });
+                    });
+                }
+            })
+            .catch(() => {});
+    }
 
     function changeWorker() {
         let name = prompt("작업자 성함 또는 닉네임을 입력하세요:", currentWorker);

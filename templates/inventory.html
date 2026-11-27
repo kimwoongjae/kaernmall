@@ -6,7 +6,10 @@
 <div class="card p-3 mb-3 shadow-sm">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0 fw-bold"><i class="bi bi-search text-primary me-1"></i> 창고 재고 및 위치 검색</h5>
-        <span class="badge bg-primary" id="totalCountBadge">0건</span>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="badge bg-success" id="backupStatusBadge" title="브라우저 영구 보존 상태"><i class="bi bi-shield-check me-1"></i>자동 보존 작동중</span>
+            <span class="badge bg-primary fs-6" id="totalCountBadge">0건</span>
+        </div>
     </div>
 
     <!-- 검색 필터 폼 -->
@@ -38,12 +41,31 @@
     </div>
 </div>
 
+<!-- 다중 선택 일괄 액션 바 -->
+<div class="card p-2 mb-2 shadow-sm bg-light" id="batchActionBar">
+    <div class="d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+            <div class="form-check me-3 mb-0">
+                <input class="form-check-input" type="checkbox" id="selectAllCheck" onchange="toggleSelectAll(this)">
+                <label class="form-check-label fw-bold small text-dark" for="selectAllCheck">전체 선택</label>
+            </div>
+            <span class="small text-muted" id="selectedCountText">선택된 항목: 0개</span>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-danger fw-bold" id="btnBatchDelete" onclick="deleteSelectedItems()" disabled>
+                <i class="bi bi-trash3-fill me-1"></i>선택 삭제
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- 재고 목록 테이블 카드 -->
-<div class="card p-0 shadow-sm overflow-hidden">
+<div class="card p-0 shadow-sm overflow-hidden mb-4">
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0 text-center text-nowrap">
             <thead class="table-dark small">
                 <tr>
+                    <th style="width: 45px;">선택</th>
                     <th>접수번호</th>
                     <th>고객명</th>
                     <th>보관 자리</th>
@@ -54,9 +76,50 @@
                 </tr>
             </thead>
             <tbody id="inventoryTableBody">
-                <tr><td colspan="7" class="py-5 text-muted">데이터를 불러오는 중입니다...</td></tr>
+                <tr><td colspan="8" class="py-5 text-muted">데이터를 불러오는 중입니다...</td></tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- 상품 정보 수정 모달 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-1"></i> 재고 정보 수정</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editOldNumber">
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">접수번호</label>
+                    <input type="text" id="editItemNumber" class="form-control form-control-lg font-monospace fw-bold">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">고객명</label>
+                    <input type="text" id="editCustomerName" class="form-control">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">보관 자리 (선반 위치)</label>
+                    <select id="editLocationCode" class="form-select form-select-lg">
+                        {% for loc in locations %}
+                        <option value="{{ loc.code }}">{{ loc.code }} - {{ loc.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">상태</label>
+                    <select id="editStatus" class="form-select">
+                        <option value="보관중">보관중</option>
+                        <option value="출고완료">출고완료</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary w-100 fw-bold py-2 fs-6" onclick="saveItemEdit()">
+                    <i class="bi bi-check-circle-fill me-1"></i> 수정사항 저장하기
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -85,51 +148,277 @@
 
 {% block scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', loadInventory);
+    let currentInventoryData = [];
+    const LOCAL_BACKUP_KEY = 'km_inventory_permanent_backup';
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadInventory();
+    });
+
+    // 1. 브라우저 로컬스토리지 영구 보존 헬퍼
+    function getLocalBackup() {
+        try {
+            const raw = localStorage.getItem(LOCAL_BACKUP_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch(e) {
+            return [];
+        }
+    }
+
+    function saveLocalBackup(items) {
+        if (!items || !Array.isArray(items)) return;
+        try {
+            // 기존 데이터와 병합하여 중복 제거
+            const existing = getLocalBackup();
+            const map = new Map();
+            existing.forEach(it => { if(it.item_number) map.set(it.item_number, it); });
+            items.forEach(it => { if(it.item_number) map.set(it.item_number, it); });
+
+            const merged = Array.from(map.values());
+            localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(merged));
+        } catch(e) {
+            console.error("Local backup save error:", e);
+        }
+    }
+
+    function removeFromLocalBackup(itemNumbers) {
+        try {
+            const set = new Set(itemNumbers);
+            const current = getLocalBackup();
+            const updated = current.filter(it => !set.has(it.item_number));
+            localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(updated));
+        } catch(e) {}
+    }
+
+    // 2. 서버 재부팅(Render) 시 자동 복원 동기화
+    async function checkAndSyncLocalBackup(serverCount) {
+        const localItems = getLocalBackup();
+        if (serverCount === 0 && localItems.length > 0) {
+            // 서버 DB가 비어있는데 브라우저에 백업이 있으면 자동 복원 요청!
+            console.log("Restoring server from local permanent storage...", localItems.length);
+            try {
+                const res = await fetch('/api/inventory/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items: localItems })
+                });
+                const resData = await res.json();
+                if (resData.success && resData.synced_count > 0) {
+                    console.log(`Auto restored ${resData.synced_count} items from permanent browser storage!`);
+                    // 재조회
+                    fetchInventoryData();
+                }
+            } catch(e) {
+                console.error("Auto sync error:", e);
+            }
+        }
+    }
 
     function loadInventory() {
+        fetchInventoryData();
+    }
+
+    function fetchInventoryData() {
         const q = document.getElementById('searchInput').value.trim();
         const loc = document.getElementById('locFilter').value;
         const status = document.getElementById('statusFilter').value;
 
         const tbody = document.getElementById('inventoryTableBody');
-        tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div>조회 중...</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div>조회 중...</td></tr>`;
+
+        // 전체 선택 체크박스 해제
+        const selectAll = document.getElementById('selectAllCheck');
+        if (selectAll) selectAll.checked = false;
+        updateSelectedCount();
 
         fetch(`/api/inventory?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&status=${encodeURIComponent(status)}`)
             .then(res => res.json())
             .then(data => {
+                const items = data.items || [];
+                currentInventoryData = items;
                 document.getElementById('totalCountBadge').innerText = `${data.count}건`;
-                if (!data.items || data.items.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="7" class="py-5 text-muted"><i class="bi bi-inbox fs-3 d-block mb-1"></i>조회된 상품이 없습니다.</td></tr>`;
+
+                // 로컬스토리지에 저장된 항목 업데이트
+                if (items.length > 0) {
+                    saveLocalBackup(items);
+                } else if (!q && !loc && (status === '보관중' || status === '전체')) {
+                    // 검색 필터가 없는데 0건이면 서버 리셋 가능성 -> 복원 검사
+                    checkAndSyncLocalBackup(0);
+                }
+
+                if (items.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="py-5 text-muted"><i class="bi bi-inbox fs-3 d-block mb-1"></i>조회된 상품이 없습니다.</td></tr>`;
                     return;
                 }
 
-                tbody.innerHTML = data.items.map(it => `
-                    <tr>
-                        <td class="fw-bold text-dark fs-6">${it.item_number}</td>
-                        <td class="fw-bold text-primary">${it.customer_name}</td>
-                        <td>
-                            <span class="badge bg-success fs-6 px-3 py-2 fw-bold shadow-sm">
-                                <i class="bi bi-geo-alt-fill me-1"></i>${it.location_code}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="badge ${it.status === '보관중' ? 'bg-primary' : 'bg-secondary'}">${it.status}</span>
-                        </td>
-                        <td class="small text-muted">${it.worker || '-'}</td>
-                        <td class="small text-muted">${it.updated_at ? it.updated_at.substring(5, 16) : '-'}</td>
-                        <td>
-                            <button class="btn btn-sm btn-outline-primary py-0 me-1" onclick="openMoveModal('${it.item_number}', '${it.location_code}')">이동</button>
-                            ${it.status === '보관중' ? `<button class="btn btn-sm btn-outline-danger py-0" onclick="checkoutItem('${it.item_number}')">출고</button>` : ''}
-                        </td>
-                    </tr>
-                `).join('');
+                renderTableRows(items);
             })
             .catch(err => {
-                tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-danger">조회 오류: ${err}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-danger">조회 오류: ${err}</td></tr>`;
             });
     }
 
+    function renderTableRows(items) {
+        const tbody = document.getElementById('inventoryTableBody');
+        tbody.innerHTML = items.map(it => `
+            <tr id="row-${it.item_number}">
+                <td>
+                    <input type="checkbox" class="form-check-input item-chk" value="${it.item_number}" onchange="updateSelectedCount()">
+                </td>
+                <td class="fw-bold text-dark fs-6 font-monospace">${it.item_number}</td>
+                <td class="fw-bold text-primary">${escapeHtml(it.customer_name)}</td>
+                <td>
+                    <span class="badge bg-success fs-6 px-3 py-2 fw-bold shadow-sm">
+                        <i class="bi bi-geo-alt-fill me-1"></i>${it.location_code}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge ${it.status === '보관중' ? 'bg-primary' : 'bg-secondary'}">${it.status}</span>
+                </td>
+                <td class="small text-muted">${escapeHtml(it.worker || '-')}</td>
+                <td class="small text-muted">${it.updated_at ? it.updated_at.substring(5, 16) : '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary py-0 me-1" onclick="openEditModal('${it.item_number}')">
+                        <i class="bi bi-pencil me-1"></i>수정
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary py-0 me-1" onclick="openMoveModal('${it.item_number}', '${it.location_code}')">
+                        이동
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteSingleItem('${it.item_number}')">
+                        삭제
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // 3. 선택 및 일괄 삭제 기능
+    function toggleSelectAll(master) {
+        const chks = document.querySelectorAll('.item-chk');
+        chks.forEach(chk => chk.checked = master.checked);
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        const checked = document.querySelectorAll('.item-chk:checked');
+        const count = checked.length;
+        document.getElementById('selectedCountText').innerText = `선택된 항목: ${count}개`;
+        document.getElementById('btnBatchDelete').disabled = count === 0;
+
+        const totalChks = document.querySelectorAll('.item-chk');
+        const selectAll = document.getElementById('selectAllCheck');
+        if (selectAll && totalChks.length > 0) {
+            selectAll.checked = (checked.length === totalChks.length);
+        }
+    }
+
+    function getSelectedNumbers() {
+        const checked = document.querySelectorAll('.item-chk:checked');
+        return Array.from(checked).map(c => c.value);
+    }
+
+    function deleteSelectedItems() {
+        const nums = getSelectedNumbers();
+        if (nums.length === 0) return;
+
+        if (!confirm(`선택한 상품 [${nums.length}개]를 목록에서 영구 삭제하시겠습니까?`)) {
+            return;
+        }
+
+        executeDelete(nums);
+    }
+
+    function deleteSingleItem(itemNum) {
+        if (!confirm(`상품 [${itemNum}]을(를) 삭제하시겠습니까?`)) return;
+        executeDelete([itemNum]);
+    }
+
+    function executeDelete(itemNumbers) {
+        const worker = localStorage.getItem('km_worker') || '관리자';
+
+        fetch('/api/item/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_numbers: itemNumbers, worker: worker })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                removeFromLocalBackup(itemNumbers);
+                fetchInventoryData();
+            } else {
+                alert("삭제 오류: " + data.message);
+            }
+        })
+        .catch(err => alert("삭제 통신 실패: " + err));
+    }
+
+    // 4. 정보 수정 모달 및 업데이트 기능
+    function openEditModal(itemNum) {
+        const item = currentInventoryData.find(it => it.item_number === itemNum);
+        if (!item) return;
+
+        document.getElementById('editOldNumber').value = item.item_number;
+        document.getElementById('editItemNumber').value = item.item_number;
+        document.getElementById('editCustomerName').value = item.customer_name;
+        document.getElementById('editLocationCode').value = item.location_code;
+        document.getElementById('editStatus').value = item.status;
+
+        new bootstrap.Modal(document.getElementById('editModal')).show();
+    }
+
+    function saveItemEdit() {
+        const oldNum = document.getElementById('editOldNumber').value;
+        const newNum = document.getElementById('editItemNumber').value.trim();
+        const cust = document.getElementById('editCustomerName').value.trim();
+        const loc = document.getElementById('editLocationCode').value.trim();
+        const status = document.getElementById('editStatus').value;
+        const worker = localStorage.getItem('km_worker') || '관리자';
+
+        if (!newNum) {
+            alert("접수번호를 입력해주세요.");
+            return;
+        }
+
+        fetch('/api/item/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                old_number: oldNum,
+                item_number: newNum,
+                customer_name: cust,
+                location_code: loc,
+                status: status,
+                worker: worker
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                // 로컬 백업 업데이트
+                removeFromLocalBackup([oldNum]);
+                saveLocalBackup([{
+                    item_number: newNum,
+                    customer_name: cust,
+                    location_code: loc,
+                    status: status,
+                    worker: worker
+                }]);
+                fetchInventoryData();
+            } else {
+                alert("수정 실패: " + data.message);
+            }
+        })
+        .catch(err => alert("수정 통신 실패: " + err));
+    }
+
+    // 5. 자리 이동 기능
     function openMoveModal(itemNum, currentLoc) {
         document.getElementById('moveItemNum').innerText = itemNum;
         document.getElementById('moveItemHidden').value = itemNum;
@@ -155,28 +444,9 @@
         .then(data => {
             if (data.success) {
                 bootstrap.Modal.getInstance(document.getElementById('moveModal')).hide();
-                loadInventory();
+                fetchInventoryData();
             } else {
                 alert("이동 실패: " + data.message);
-            }
-        });
-    }
-
-    function checkoutItem(itemNum) {
-        if (!confirm(`${itemNum} 상품을 출고 완료 처리하시겠습니까?`)) return;
-        const worker = localStorage.getItem('km_worker') || '작업자';
-
-        fetch('/api/checkout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_number: itemNum, worker: worker })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                loadInventory();
-            } else {
-                alert("출고 오류: " + data.message);
             }
         });
     }

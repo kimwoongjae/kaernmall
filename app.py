@@ -310,6 +310,119 @@ def api_checkout():
     conn.close()
     return jsonify({"success": True, "message": f"{item_num} 출고 처리 완료"})
 
+@app.route("/api/item/delete", methods=["POST"])
+def api_item_delete():
+    """선택한 상품(들) 일괄 삭제"""
+    data = request.json or {}
+    item_numbers = data.get("item_numbers", [])
+    if isinstance(item_numbers, str):
+        item_numbers = [item_numbers]
+
+    if not item_numbers:
+        return jsonify({"success": False, "message": "삭제할 상품 번호가 전달되지 않았습니다."}), 400
+
+    conn = database.get_connection()
+    count = 0
+    with conn:
+        for num in item_numbers:
+            num_str = str(num).strip()
+            if num_str:
+                conn.execute("DELETE FROM items WHERE item_number = ?", (num_str,))
+                conn.execute("""
+                    INSERT INTO scan_logs (item_number, action, worker)
+                    VALUES (?, '관리자 삭제', ?)
+                """, (num_str, data.get("worker", "관리자")))
+                count += 1
+    conn.close()
+    return jsonify({"success": True, "count": count, "message": f"상품 {count}건이 삭제되었습니다."})
+
+@app.route("/api/item/update", methods=["POST"])
+def api_item_update():
+    """상품 정보 수정 (접수번호, 고객명, 보관자리, 상태)"""
+    data = request.json or {}
+    old_number = str(data.get("old_number", "")).strip()
+    new_number = str(data.get("item_number", "")).strip()
+    customer_name = str(data.get("customer_name", "")).strip()
+    location_code = str(data.get("location_code", "")).strip().upper()
+    status = str(data.get("status", "보관중")).strip()
+    worker = str(data.get("worker", "관리자")).strip()
+
+    if not old_number or not new_number:
+        return jsonify({"success": False, "message": "접수번호가 유효하지 않습니다."}), 400
+
+    conn = database.get_connection()
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with conn:
+            # 보관자리가 locations에 없으면 자동 등록
+            if location_code:
+                loc_row = conn.execute("SELECT code FROM locations WHERE code = ?", (location_code,)).fetchone()
+                if not loc_row:
+                    loc_name, loc_zone = database.parse_location_name(location_code)
+                    conn.execute("INSERT OR IGNORE INTO locations (code, name, zone) VALUES (?, ?, ?)",
+                                 (location_code, loc_name, loc_zone))
+
+            conn.execute("""
+                UPDATE items
+                SET item_number = ?, customer_name = ?, location_code = ?, status = ?, worker = ?, updated_at = ?
+                WHERE item_number = ?
+            """, (new_number, customer_name, location_code, status, worker, now_str, old_number))
+
+            conn.execute("""
+                INSERT INTO scan_logs (item_number, customer_name, location_code, action, worker, created_at)
+                VALUES (?, ?, ?, '정보수정', ?, ?)
+            """, (new_number, customer_name, location_code, worker, now_str))
+
+        conn.close()
+        return jsonify({"success": True, "message": f"상품 {new_number} 수정 완료!"})
+    except Exception as e:
+        conn.close()
+        return jsonify({"success": False, "message": f"수정 오류: {str(e)}"}), 500
+
+@app.route("/api/inventory/sync", methods=["POST"])
+def api_inventory_sync():
+    """
+    브라우저(로컬스토리지) 백업 데이터를 서버 DB에 동기화
+    (Render 무료 배포 서버가 재부팅되어도 스캔된 데이터가 절대 날아가지 않도록 보장)
+    """
+    data = request.json or {}
+    items = data.get("items", [])
+    if not items:
+        return jsonify({"success": True, "synced_count": 0, "message": "동기화할 데이터가 없습니다."})
+
+    conn = database.get_connection()
+    synced_count = 0
+    with conn:
+        for it in items:
+            num = str(it.get("item_number", "")).strip()
+            cust = str(it.get("customer_name", "고객")).strip()
+            loc = str(it.get("location_code", "")).strip().upper()
+            status = str(it.get("status", "보관중")).strip()
+            worker = str(it.get("worker", "작업자")).strip()
+            updated_at = it.get("updated_at") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            if not num:
+                continue
+
+            # 로케이션 등록 확인
+            if loc:
+                loc_row = conn.execute("SELECT code FROM locations WHERE code = ?", (loc,)).fetchone()
+                if not loc_row:
+                    loc_name, loc_zone = database.parse_location_name(loc)
+                    conn.execute("INSERT OR IGNORE INTO locations (code, name, zone) VALUES (?, ?, ?)", (loc, loc_name, loc_zone))
+
+            existing = conn.execute("SELECT item_number FROM items WHERE item_number = ?", (num,)).fetchone()
+            if not existing:
+                conn.execute("""
+                    INSERT INTO items (item_number, customer_name, location_code, status, worker, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (num, cust, loc, status, worker, updated_at, updated_at))
+                synced_count += 1
+
+    conn.close()
+    return jsonify({"success": True, "synced_count": synced_count, "message": f"{synced_count}건 데이터 영구 복원 동기화 완료"})
+
+
 @app.route("/api/locations/add", methods=["POST"])
 def api_locations_add():
     data = request.json or {}
