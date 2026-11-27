@@ -268,7 +268,7 @@ def api_locations_add():
 
 if __name__ == "__main__":
     local_ip = get_local_ip()
-    port = 5000
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 60)
     print(f"📦 [카에루몰 스마트 창고 로케이션 시스템 서버 시작]")
     print(f"🖥️ PC 접속 주소:     http://localhost:{port}")
