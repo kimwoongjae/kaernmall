@@ -4,29 +4,41 @@
 
 {% block head %}
 <style>
+    @page {
+        size: 60mm 40mm;
+        margin: 0;
+    }
     @media print {
-        body {
-            background: white !important;
+        html, body {
+            width: 60mm !important;
+            height: 40mm !important;
+            margin: 0 !important;
             padding: 0 !important;
+            background: #fff !important;
         }
         .navbar, .bottom-nav, .no-print {
             display: none !important;
         }
         .print-container {
             display: block !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         .location-label-card {
-            width: 60mm;
-            height: 40mm;
-            page-break-after: always;
-            border: 2px solid #000;
-            padding: 3mm 4mm;
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            justify-content: space-between;
-            margin: 0 auto;
-            box-sizing: border-box;
+            width: 60mm !important;
+            height: 40mm !important;
+            box-sizing: border-box !important;
+            page-break-after: always !important;
+            page-break-inside: avoid !important;
+            border: 2px solid #000 !important;
+            padding: 2mm 3mm !important;
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            margin: 0 !important;
+            overflow: hidden !important;
+            background: #fff !important;
         }
     }
     .rule-badge {
@@ -51,7 +63,7 @@
     <div class="card p-3 mb-3 shadow-sm bg-white border-start border-primary border-4">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-info-circle-fill me-1"></i> 보관장소(로케이션) 코드 체계</h5>
-            <span class="rule-badge">A-110 ~ A-153</span>
+            <span class="rule-badge">A-110 ~ B-553</span>
         </div>
         <div class="row g-2 small text-muted">
             <div class="col-6 col-md-3">
@@ -102,14 +114,14 @@
         </div>
     </div>
 
-    <!-- 3. 등록된 자리 카드 목록 (보관 상품 항목 완전 제거로 깔끔하게 정리!) -->
+    <!-- 3. 등록된 자리 카드 목록 -->
     <div class="row g-2 mb-4" id="locCardsContainer">
         {% for loc in locations %}
         <div class="col-6 col-md-4 col-lg-3 loc-card-item" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
             <div class="card p-2 shadow-sm h-100 position-relative border">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="badge bg-secondary" style="font-size: 0.7rem;">{{ loc.zone }}</span>
-                    <button class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" onclick="printSingleLabel('{{ loc.code }}', '{{ loc.name }}')">
+                    <button class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" onclick="printSingleLabel('{{ loc.code }}')">
                         <i class="bi bi-printer me-1"></i>인쇄
                     </button>
                 </div>
@@ -126,24 +138,23 @@
     </div>
 </div>
 
-<!-- 4. 라벨기(60x40mm) 인쇄 전용 영역 -->
+<!-- 4. 라벨기(60x40mm) 인쇄 전용 영역: 딱 번호와 QR코드만 출력! -->
 <div class="print-container" style="display:none;" id="printArea">
     {% for loc in locations %}
-    <div class="location-label-card mb-3 print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
-        <div style="flex: 1; padding-right: 6px;">
-            <div style="font-size: 8pt; font-weight: bold; color: #444;">카에루몰 보관장소</div>
-            <div style="font-size: 24pt; font-weight: 900; line-height: 1.1; color: #000; letter-spacing: -1px;">{{ loc.code }}</div>
-            <div style="font-size: 8.5pt; font-weight: bold; color: #111; margin-top: 3px;">{{ loc.name }}</div>
-            <div style="font-size: 6.5pt; color: #666; margin-top: 5px;">스마트폰 스캔 입고 매핑</div>
+    <div class="location-label-card print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding-right: 2mm;">
+            <div style="font-size: 26pt; font-weight: 900; line-height: 1.0; color: #000; letter-spacing: -0.5px; white-space: nowrap;">
+                {{ loc.code }}
+            </div>
         </div>
-        <div>
-            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 32mm; height: 32mm;">
+        <div style="display: flex; align-items: center; justify-content: center;">
+            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 32mm; height: 32mm; object-fit: contain;">
         </div>
     </div>
     {% endfor %}
 </div>
 
-<!-- 새 장소 등록 모달 (10번대: 5까지, 1번대: 0~9 지원) -->
+<!-- 새 장소 등록 모달 -->
 <div class="modal fade" id="addLocModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -334,18 +345,17 @@
         });
     }
 
-    function printSingleLabel(code, name) {
+    function printSingleLabel(code) {
         const printArea = document.getElementById('printArea');
         printArea.innerHTML = `
             <div class="location-label-card">
-                <div style="flex: 1; padding-right: 6px;">
-                    <div style="font-size: 8.5pt; font-weight: bold; color: #444;">카에루몰 보관장소</div>
-                    <div style="font-size: 24pt; font-weight: 900; line-height: 1.1; color: #000; letter-spacing: -1px;">${code}</div>
-                    <div style="font-size: 9pt; font-weight: bold; color: #111; margin-top: 3px;">${name}</div>
-                    <div style="font-size: 6.5pt; color: #666; margin-top: 5px;">스마트폰 스캔 입고 매핑</div>
+                <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding-right: 2mm;">
+                    <div style="font-size: 26pt; font-weight: 900; line-height: 1.0; color: #000; letter-spacing: -0.5px; white-space: nowrap;">
+                        ${code}
+                    </div>
                 </div>
-                <div>
-                    <img src="/qr/LOC:${code}" alt="QR" style="width: 32mm; height: 32mm;">
+                <div style="display: flex; align-items: center; justify-content: center;">
+                    <img src="/qr/LOC:${code}" alt="QR" style="width: 32mm; height: 32mm; object-fit: contain;">
                 </div>
             </div>
         `;
