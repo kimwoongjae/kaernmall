@@ -1,0 +1,183 @@
+{% extends "layout.html" %}
+
+{% block title %}자리(로케이션) 관리 및 QR 인쇄 - 카에루몰 창고 시스템{% endblock %}
+
+{% block head %}
+<style>
+    @media print {
+        body {
+            background: white !important;
+            padding: 0 !important;
+        }
+        .navbar, .bottom-nav, .no-print {
+            display: none !important;
+        }
+        .print-container {
+            display: block !important;
+        }
+        .location-label-card {
+            width: 60mm;
+            height: 40mm;
+            page-break-after: always;
+            border: 2px solid #000;
+            padding: 2mm 3mm;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+    }
+    .location-label-preview {
+        width: 100%;
+        max-width: 280px;
+        border: 2px solid #333;
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="no-print">
+    <!-- 1. 상단 안내 및 자리 추가 버튼 -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h5 class="mb-0 fw-bold"><i class="bi bi-grid-3x3-gap-fill text-primary me-1"></i> 창고 자리(선반) 관리</h5>
+            <small class="text-muted">선반에 부착할 자리 QR 코드를 출력하고 관리합니다.</small>
+        </div>
+        <div>
+            <button class="btn btn-outline-primary btn-sm fw-bold me-1" onclick="window.print()">
+                <i class="bi bi-printer-fill me-1"></i> 전체 자리 QR 인쇄
+            </button>
+            <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addLocModal">
+                <i class="bi bi-plus-lg me-1"></i> 새 자리 추가
+            </button>
+        </div>
+    </div>
+
+    <!-- 2. 등록된 자리 카드 목록 -->
+    <div class="row g-3 mb-4">
+        {% for loc in locations %}
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card p-3 shadow-sm h-100 position-relative">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="badge bg-secondary mb-1">{{ loc.zone }}</span>
+                        <h4 class="fw-black text-primary mb-0">{{ loc.code }}</h4>
+                        <small class="text-muted d-block">{{ loc.name }}</small>
+                    </div>
+                    <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 65px; height: 65px;" class="border p-1 rounded">
+                </div>
+                <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
+                    <span class="small text-muted">현재 보관 상품:</span>
+                    <span class="badge {% if loc.active_count > 0 %}bg-success{% else %}bg-light text-secondary border{% endif %} fs-6">
+                        {{ loc.active_count }}건
+                    </span>
+                </div>
+                <div class="mt-2 text-end">
+                    <button class="btn btn-sm btn-outline-secondary py-0 small" onclick="printSingleLabel('{{ loc.code }}', '{{ loc.name }}')">
+                        <i class="bi bi-printer me-1"></i>이 자리만 인쇄
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 3. 인쇄용 전용 영역 (화면에서는 숨김, 인쇄 시 자동 활성화) -->
+<div class="print-container" style="display:none;" id="printArea">
+    {% for loc in locations %}
+    <div class="location-label-card mb-3">
+        <div style="flex: 1; padding-right: 5px;">
+            <div style="font-size: 8pt; font-weight: bold; color: #555;">카에루몰 보관자리</div>
+            <div style="font-size: 20pt; font-weight: 900; line-height: 1.1; color: #000;">{{ loc.code }}</div>
+            <div style="font-size: 8pt; color: #333; margin-top: 2px;">{{ loc.name }}</div>
+            <div style="font-size: 6.5pt; color: #777; margin-top: 4px;">스마트폰으로 스캔하여 입고</div>
+        </div>
+        <div>
+            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 32mm; height: 32mm;">
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- 새 자리 추가 모달 -->
+<div class="modal fade" id="addLocModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-1"></i> 새로운 보관 자리 등록</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">자리 코드 (필수, 예: A-04, 랙-05, C-1)</label>
+                    <input type="text" id="newLocCode" class="form-control" placeholder="A-04">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">자리 명칭/설명 (선택)</label>
+                    <input type="text" id="newLocName" class="form-control" placeholder="A존 4번 선반 2층">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">구역/존 (선택)</label>
+                    <input type="text" id="newLocZone" class="form-control" placeholder="A존" value="A존">
+                </div>
+                <button class="btn btn-primary w-100 fw-bold py-2" onclick="saveNewLocation()">자리 등록 완료</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function saveNewLocation() {
+        const code = document.getElementById('newLocCode').value.trim();
+        const name = document.getElementById('newLocName').value.trim();
+        const zone = document.getElementById('newLocZone').value.trim();
+
+        if (!code) {
+            alert("자리 코드를 입력해주세요.");
+            return;
+        }
+
+        fetch('/api/locations/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code, name: name, zone: zone })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert("✅ " + data.message);
+                location.reload();
+            } else {
+                alert("등록 실패: " + data.message);
+            }
+        });
+    }
+
+    function printSingleLabel(code, name) {
+        const printArea = document.getElementById('printArea');
+        printArea.innerHTML = `
+            <div class="location-label-card">
+                <div style="flex: 1; padding-right: 5px;">
+                    <div style="font-size: 8pt; font-weight: bold; color: #555;">카에루몰 보관자리</div>
+                    <div style="font-size: 22pt; font-weight: 900; line-height: 1.1; color: #000;">${code}</div>
+                    <div style="font-size: 8pt; color: #333; margin-top: 2px;">${name}</div>
+                    <div style="font-size: 6.5pt; color: #777; margin-top: 4px;">스마트폰으로 스캔하여 입고</div>
+                </div>
+                <div>
+                    <img src="/qr/LOC:${code}" alt="QR" style="width: 32mm; height: 32mm;">
+                </div>
+            </div>
+        `;
+        window.print();
+        location.reload();
+    }
+</script>
+{% endblock %}

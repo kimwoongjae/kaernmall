@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{% block title %}카에루몰 창고 로케이션 시스템{% endblock %}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", Roboto, sans-serif;
+            background-color: #f4f6f9;
+            padding-bottom: 70px;
+        }
+        .navbar-brand {
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #ffffff;
+            border-top: 1px solid #dee2e6;
+            z-index: 1030;
+            height: 60px;
+        }
+        .bottom-nav a {
+            color: #6c757d;
+            text-decoration: none;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        .bottom-nav a.active {
+            color: #0d6efd;
+        }
+        .bottom-nav a i {
+            font-size: 1.3rem;
+            margin-bottom: 2px;
+        }
+        .card {
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: none;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Top Header -->
+    <nav class="navbar navbar-dark bg-primary shadow-sm">
+        <div class="container-fluid px-3">
+            <span class="navbar-brand mb-0 h1 d-flex align-items-center">
+                <i class="bi bi-box-seam-fill me-2"></i> 카에루몰 창고 로케이션
+            </span>
+            <span class="badge bg-light text-primary fw-bold" id="headerWorkerBadge">작업자</span>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container py-3">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Mobile Bottom Navigation -->
+    <div class="bottom-nav d-flex justify-content-around">
+        <a href="/scanner" class="{% if request.path == '/scanner' or request.path == '/' %}active{% endif %}">
+            <i class="bi bi-qr-code-scan"></i>
+            <span>QR 스캐너</span>
+        </a>
+        <a href="/inventory" class="{% if request.path == '/inventory' %}active{% endif %}">
+            <i class="bi bi-list-check"></i>
+            <span>재고 조회</span>
+        </a>
+        <a href="/locations" class="{% if request.path == '/locations' %}active{% endif %}">
+            <i class="bi bi-grid-3x3-gap-fill"></i>
+            <span>자리/QR 인쇄</span>
+        </a>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 작업자 이름 로컬스토리지 관리
+        let savedWorker = localStorage.getItem('km_worker') || '작업자1';
+        document.getElementById('headerWorkerBadge').innerText = savedWorker;
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

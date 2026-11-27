@@ -1,0 +1,184 @@
+{% extends "layout.html" %}
+
+{% block title %}재고 및 자리 조회 - 카에루몰 창고 시스템{% endblock %}
+
+{% block content %}
+<div class="card p-3 mb-3 shadow-sm">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-search text-primary me-1"></i> 창고 재고 및 위치 검색</h5>
+        <span class="badge bg-primary" id="totalCountBadge">0건</span>
+    </div>
+
+    <!-- 검색 필터 폼 -->
+    <div class="row g-2 mb-2">
+        <div class="col-12 col-md-5">
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="searchInput" class="form-control" placeholder="접수번호, 고객명, 작업자 검색..." onkeyup="if(event.key==='Enter') loadInventory()">
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <select id="locFilter" class="form-select" onchange="loadInventory()">
+                <option value="">모든 자리 (전체)</option>
+                {% for loc in locations %}
+                <option value="{{ loc.code }}">{{ loc.code }} ({{ loc.name }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <select id="statusFilter" class="form-select" onchange="loadInventory()">
+                <option value="보관중" selected>보관중</option>
+                <option value="출고완료">출고완료</option>
+                <option value="전체">상태 전체</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-2 d-grid">
+            <button class="btn btn-primary fw-bold" onclick="loadInventory()"><i class="bi bi-arrow-repeat me-1"></i> 조회</button>
+        </div>
+    </div>
+</div>
+
+<!-- 재고 목록 테이블 카드 -->
+<div class="card p-0 shadow-sm overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 text-center text-nowrap">
+            <thead class="table-dark small">
+                <tr>
+                    <th>접수번호</th>
+                    <th>고객명</th>
+                    <th>보관 자리</th>
+                    <th>상태</th>
+                    <th>작업자</th>
+                    <th>저장일시</th>
+                    <th>관리</th>
+                </tr>
+            </thead>
+            <tbody id="inventoryTableBody">
+                <tr><td colspan="7" class="py-5 text-muted">데이터를 불러오는 중입니다...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 자리 변경 모달 -->
+<div class="modal fade" id="moveModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">📍 보관 자리 이동</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>상품 <strong id="moveItemNum" class="text-danger"></strong>의 새로운 보관 자리를 선택하세요.</p>
+                <input type="hidden" id="moveItemHidden">
+                <select id="newLocSelect" class="form-select form-select-lg mb-3">
+                    {% for loc in locations %}
+                    <option value="{{ loc.code }}">{{ loc.code }} - {{ loc.name }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-primary w-100 fw-bold py-2" onclick="confirmMove()">자리 이동 저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', loadInventory);
+
+    function loadInventory() {
+        const q = document.getElementById('searchInput').value.trim();
+        const loc = document.getElementById('locFilter').value;
+        const status = document.getElementById('statusFilter').value;
+
+        const tbody = document.getElementById('inventoryTableBody');
+        tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div>조회 중...</td></tr>`;
+
+        fetch(`/api/inventory?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&status=${encodeURIComponent(status)}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('totalCountBadge').innerText = `${data.count}건`;
+                if (!data.items || data.items.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="py-5 text-muted"><i class="bi bi-inbox fs-3 d-block mb-1"></i>조회된 상품이 없습니다.</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = data.items.map(it => `
+                    <tr>
+                        <td class="fw-bold text-dark fs-6">${it.item_number}</td>
+                        <td class="fw-bold text-primary">${it.customer_name}</td>
+                        <td>
+                            <span class="badge bg-success fs-6 px-3 py-2 fw-bold shadow-sm">
+                                <i class="bi bi-geo-alt-fill me-1"></i>${it.location_code}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge ${it.status === '보관중' ? 'bg-primary' : 'bg-secondary'}">${it.status}</span>
+                        </td>
+                        <td class="small text-muted">${it.worker || '-'}</td>
+                        <td class="small text-muted">${it.updated_at ? it.updated_at.substring(5, 16) : '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary py-0 me-1" onclick="openMoveModal('${it.item_number}', '${it.location_code}')">이동</button>
+                            ${it.status === '보관중' ? `<button class="btn btn-sm btn-outline-danger py-0" onclick="checkoutItem('${it.item_number}')">출고</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            })
+            .catch(err => {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-danger">조회 오류: ${err}</td></tr>`;
+            });
+    }
+
+    function openMoveModal(itemNum, currentLoc) {
+        document.getElementById('moveItemNum').innerText = itemNum;
+        document.getElementById('moveItemHidden').value = itemNum;
+        document.getElementById('newLocSelect').value = currentLoc;
+        new bootstrap.Modal(document.getElementById('moveModal')).show();
+    }
+
+    function confirmMove() {
+        const itemNum = document.getElementById('moveItemHidden').value;
+        const newLoc = document.getElementById('newLocSelect').value;
+        const worker = localStorage.getItem('km_worker') || '작업자';
+
+        fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                qr_text: itemNum,
+                location: newLoc,
+                worker: worker
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('moveModal')).hide();
+                loadInventory();
+            } else {
+                alert("이동 실패: " + data.message);
+            }
+        });
+    }
+
+    function checkoutItem(itemNum) {
+        if (!confirm(`${itemNum} 상품을 출고 완료 처리하시겠습니까?`)) return;
+        const worker = localStorage.getItem('km_worker') || '작업자';
+
+        fetch('/api/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_number: itemNum, worker: worker })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                loadInventory();
+            } else {
+                alert("출고 오류: " + data.message);
+            }
+        });
+    }
+</script>
+{% endblock %}
