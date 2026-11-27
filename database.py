@@ -7,17 +7,17 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "warehouse.db
 
 def parse_location_name(code):
     """
-    자리 코드 규칙 해석 (예: A-110, B-321)
-    - A/B: 구역
-    - 1~5: 100번대 (1~5번 렉)
-    - 1~9: 10번대 (층수)
-    - 0~9: 1번대 (0은 기본 통선반, 1~9는 층 내 세부 박스 번호)
+    보관장소 코드 체계 (A-110, B-321 등)
+    - 구역: A, B
+    - 100번대: 1~5번 렉 (100~500)
+    - 10번대: 1~5층 (10, 20, 30, 40, 50)
+    - 1번대: 0은 통선반, 1~9는 층 내 세부 박스 번호
     """
     code_clean = code.strip().upper()
     if code_clean.startswith("LOC:"):
         code_clean = code_clean[4:].strip()
 
-    m = re.match(r'^([AB])-([1-5])(\d)(\d)$', code_clean)
+    m = re.match(r'^([AB])-([1-5])([1-5])(\d)$', code_clean)
     if m:
         zone = f"{m.group(1)}구역"
         rack = f"{m.group(2)}번 렉"
@@ -76,21 +76,18 @@ def init_db():
             )
         """)
 
-        # 기존 임시 샘플 자리(A-01, B-01 등) 정리
+        # 구버전 임시 자리들 정리
         conn.execute("DELETE FROM locations WHERE code IN ('A-01', 'A-02', 'A-03', 'B-01', 'B-02', 'B-03', '임시보관')")
 
-        # 표준 자리 자동 생성:
-        # 구역: A, B
-        # 렉: 1~5 (100번대)
-        # 층: 1~4층 (10, 20, 30, 40)
-        # 박스: 0 (기본)
+        # 표준 자리 생성 (A, B구역 / 1~5번 렉 / 1~5층 / 0~3번 박스)
         standard_locations = []
         for zone_char in ['A', 'B']:
             for rack_num in range(1, 6): # 100 ~ 500번 렉
-                for floor_num in range(1, 5): # 1~4층
-                    code = f"{zone_char}-{rack_num}{floor_num}0"
-                    name, zone = parse_location_name(code)
-                    standard_locations.append((code, name, zone))
+                for floor_num in range(1, 6): # 1 ~ 5층 (10번대는 5까지)
+                    for box_num in [0, 1, 2, 3]: # 1번대 (0은 통선반, 1~3번 박스)
+                        code = f"{zone_char}-{rack_num}{floor_num}{box_num}"
+                        name, zone = parse_location_name(code)
+                        standard_locations.append((code, name, zone))
 
         conn.executemany("""
             INSERT OR IGNORE INTO locations (code, name, zone) VALUES (?, ?, ?)
@@ -100,4 +97,4 @@ def init_db():
 
 if __name__ == "__main__":
     init_db()
-    print("Database initialized with A-110 style standard locations.")
+    print("Database initialized successfully.")

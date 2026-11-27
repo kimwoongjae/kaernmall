@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 
-{% block title %}보관장소 관리 및 QR 인쇄 - 카에루몰 창고 시스템{% endblock %}
+{% block title %}보관장소 QR 인쇄 - 카에루몰 창고 시스템{% endblock %}
 
 {% block head %}
 <style>
@@ -37,6 +37,11 @@
         padding: 2px 8px;
         border-radius: 6px;
     }
+    .btn-filter.active {
+        background-color: #0d6efd;
+        color: white;
+        font-weight: bold;
+    }
 </style>
 {% endblock %}
 
@@ -46,7 +51,7 @@
     <div class="card p-3 mb-3 shadow-sm bg-white border-start border-primary border-4">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-info-circle-fill me-1"></i> 보관장소(로케이션) 코드 체계</h5>
-            <span class="rule-badge">A-110</span>
+            <span class="rule-badge">A-110 ~ A-153</span>
         </div>
         <div class="row g-2 small text-muted">
             <div class="col-6 col-md-3">
@@ -56,52 +61,64 @@
                 <strong class="text-dark">100번대:</strong> 렉 번호 (100~500번 렉)
             </div>
             <div class="col-6 col-md-3">
-                <strong class="text-dark">10번대:</strong> 층수 (1층, 2층, 3층...)
+                <strong class="text-dark">10번대:</strong> 층수 (1층 ~ 5층)
             </div>
             <div class="col-6 col-md-3">
-                <strong class="text-dark">1번대:</strong> 층 내 박스 (0:통선반, 1~9:박스)
+                <strong class="text-dark">1번대:</strong> 층 내 박스 (0:통선반, 1~3:박스)
             </div>
         </div>
     </div>
 
-    <!-- 2. 상단 액션 바 -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h5 class="mb-0 fw-bold"><i class="bi bi-grid-3x3-gap-fill text-primary me-1"></i> 등록된 장소 목록 ({{ locations|length }}곳)</h5>
+    <!-- 2. 빠른 필터 및 액션 바 -->
+    <div class="card p-3 mb-3 shadow-sm">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <div class="d-flex flex-wrap align-items-center gap-1">
+                <span class="small fw-bold text-secondary me-1">구역:</span>
+                <button class="btn btn-sm btn-outline-primary btn-filter active" onclick="setZoneFilter('', this)">전체</button>
+                <button class="btn btn-sm btn-outline-primary btn-filter" onclick="setZoneFilter('A', this)">A구역</button>
+                <button class="btn btn-sm btn-outline-primary btn-filter" onclick="setZoneFilter('B', this)">B구역</button>
+
+                <span class="small fw-bold text-secondary ms-2 me-1">렉:</span>
+                <button class="btn btn-sm btn-outline-secondary btn-rack-filter active" onclick="setRackFilter('', this)">전체렉</button>
+                <button class="btn btn-sm btn-outline-secondary btn-rack-filter" onclick="setRackFilter('1', this)">100번대</button>
+                <button class="btn btn-sm btn-outline-secondary btn-rack-filter" onclick="setRackFilter('2', this)">200번대</button>
+                <button class="btn btn-sm btn-outline-secondary btn-rack-filter" onclick="setRackFilter('3', this)">300번대</button>
+                <button class="btn btn-sm btn-outline-secondary btn-rack-filter" onclick="setRackFilter('4', this)">400번대</button>
+                <button class="btn btn-sm btn-outline-secondary btn-rack-filter" onclick="setRackFilter('5', this)">500번대</button>
+            </div>
+            <div>
+                <button class="btn btn-outline-primary btn-sm fw-bold me-1" onclick="printFilteredLabels()">
+                    <i class="bi bi-printer-fill me-1"></i> 현재 화면 라벨 인쇄
+                </button>
+                <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addLocModal">
+                    <i class="bi bi-plus-lg me-1"></i> 새 장소 추가
+                </button>
+            </div>
         </div>
-        <div>
-            <button class="btn btn-outline-primary btn-sm fw-bold me-1" onclick="window.print()">
-                <i class="bi bi-printer-fill me-1"></i> 전체 라벨 인쇄
-            </button>
-            <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addLocModal">
-                <i class="bi bi-plus-lg me-1"></i> 새 장소 추가
-            </button>
+        <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" id="locSearchInput" class="form-control" placeholder="장소 코드 직접 검색 (예: A-111, B-320)..." oninput="applyFilters()">
+            <span class="input-group-text text-muted" id="displayCountBadge">표시: {{ locations|length }}곳</span>
         </div>
     </div>
 
-    <!-- 3. 등록된 자리 카드 목록 -->
-    <div class="row g-3 mb-4">
+    <!-- 3. 등록된 자리 카드 목록 (보관 상품 항목 완전 제거로 깔끔하게 정리!) -->
+    <div class="row g-2 mb-4" id="locCardsContainer">
         {% for loc in locations %}
-        <div class="col-6 col-md-4 col-lg-3">
-            <div class="card p-3 shadow-sm h-100 position-relative">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <span class="badge bg-secondary mb-1">{{ loc.zone }}</span>
-                        <h3 class="fw-black text-primary mb-0">{{ loc.code }}</h3>
-                        <small class="text-muted d-block fw-bold">{{ loc.name }}</small>
-                    </div>
-                    <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 70px; height: 70px;" class="border p-1 rounded bg-white">
-                </div>
-                <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
-                    <span class="small text-muted">보관 상품:</span>
-                    <span class="badge {% if loc.active_count > 0 %}bg-success{% else %}bg-light text-secondary border{% endif %} fs-6">
-                        {{ loc.active_count }}건
-                    </span>
-                </div>
-                <div class="mt-2 text-end">
-                    <button class="btn btn-sm btn-outline-secondary py-0 small" onclick="printSingleLabel('{{ loc.code }}', '{{ loc.name }}')">
-                        <i class="bi bi-printer me-1"></i>이 자리만 인쇄
+        <div class="col-6 col-md-4 col-lg-3 loc-card-item" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
+            <div class="card p-2 shadow-sm h-100 position-relative border">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="badge bg-secondary" style="font-size: 0.7rem;">{{ loc.zone }}</span>
+                    <button class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" onclick="printSingleLabel('{{ loc.code }}', '{{ loc.name }}')">
+                        <i class="bi bi-printer me-1"></i>인쇄
                     </button>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="fw-black text-primary mb-0" style="letter-spacing: -0.5px;">{{ loc.code }}</h3>
+                        <small class="text-dark fw-bold d-block" style="font-size: 0.78rem;">{{ loc.name }}</small>
+                    </div>
+                    <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 65px; height: 65px;" class="border p-1 rounded bg-white">
                 </div>
             </div>
         </div>
@@ -112,11 +129,11 @@
 <!-- 4. 라벨기(60x40mm) 인쇄 전용 영역 -->
 <div class="print-container" style="display:none;" id="printArea">
     {% for loc in locations %}
-    <div class="location-label-card mb-3">
+    <div class="location-label-card mb-3 print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
         <div style="flex: 1; padding-right: 6px;">
-            <div style="font-size: 8.5pt; font-weight: bold; color: #333;">카에루몰 보관장소</div>
+            <div style="font-size: 8pt; font-weight: bold; color: #444;">카에루몰 보관장소</div>
             <div style="font-size: 24pt; font-weight: 900; line-height: 1.1; color: #000; letter-spacing: -1px;">{{ loc.code }}</div>
-            <div style="font-size: 9pt; font-weight: bold; color: #111; margin-top: 3px;">{{ loc.name }}</div>
+            <div style="font-size: 8.5pt; font-weight: bold; color: #111; margin-top: 3px;">{{ loc.name }}</div>
             <div style="font-size: 6.5pt; color: #666; margin-top: 5px;">스마트폰 스캔 입고 매핑</div>
         </div>
         <div>
@@ -126,7 +143,7 @@
     {% endfor %}
 </div>
 
-<!-- 새 장소 등록 모달 (A-110 전용 빌더) -->
+<!-- 새 장소 등록 모달 (10번대: 5까지, 1번대: 0~9 지원) -->
 <div class="modal fade" id="addLocModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -144,7 +161,7 @@
                         </select>
                     </div>
                     <div class="col-6">
-                        <label class="form-label small fw-bold">100번대 (렉 번호: 1~5)</label>
+                        <label class="form-label small fw-bold">100번대 (렉: 1~5)</label>
                         <select id="selRack" class="form-select" onchange="updatePreviewCode()">
                             <option value="1" selected>100번대 (1번 렉)</option>
                             <option value="2">200번대 (2번 렉)</option>
@@ -154,28 +171,28 @@
                         </select>
                     </div>
                     <div class="col-6">
-                        <label class="form-label small fw-bold">10번대 (층수: 1~9층)</label>
+                        <label class="form-label small fw-bold">10번대 (층수: 1~5층)</label>
                         <select id="selFloor" class="form-select" onchange="updatePreviewCode()">
                             <option value="1" selected>1층 (10)</option>
                             <option value="2">2층 (20)</option>
                             <option value="3">3층 (30)</option>
                             <option value="4">4층 (40)</option>
                             <option value="5">5층 (50)</option>
-                            <option value="6">6층 (60)</option>
-                            <option value="7">7층 (70)</option>
-                            <option value="8">8층 (80)</option>
-                            <option value="9">9층 (90)</option>
                         </select>
                     </div>
                     <div class="col-6">
                         <label class="form-label small fw-bold">1번대 (세부 박스 번호)</label>
                         <select id="selBox" class="form-select" onchange="updatePreviewCode()">
-                            <option value="0" selected>0 (기본 통선반)</option>
+                            <option value="0" selected>0 (통선반)</option>
                             <option value="1">1 (1번 박스)</option>
                             <option value="2">2 (2번 박스)</option>
                             <option value="3">3 (3번 박스)</option>
                             <option value="4">4 (4번 박스)</option>
                             <option value="5">5 (5번 박스)</option>
+                            <option value="6">6 (6번 박스)</option>
+                            <option value="7">7 (7번 박스)</option>
+                            <option value="8">8 (8번 박스)</option>
+                            <option value="9">9 (9번 박스)</option>
                         </select>
                     </div>
                 </div>
@@ -192,7 +209,7 @@
                         <i class="bi bi-check-lg me-1"></i>이 장소 등록하기
                     </button>
                     <button class="btn btn-outline-secondary btn-sm" onclick="generateStandardSet()">
-                        <i class="bi bi-magic me-1"></i>A/B구역 1~5번 렉 기본 세트(1~4층) 자동 복원
+                        <i class="bi bi-magic me-1"></i>A/B구역 1~5번 렉 기본 세트(1~5층, 박스 0~3) 일괄 재생성
                     </button>
                 </div>
             </div>
@@ -203,6 +220,71 @@
 
 {% block scripts %}
 <script>
+    let filterZone = '';
+    let filterRack = '';
+
+    function setZoneFilter(zone, btn) {
+        filterZone = zone;
+        document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyFilters();
+    }
+
+    function setRackFilter(rack, btn) {
+        filterRack = rack;
+        document.querySelectorAll('.btn-rack-filter').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyFilters();
+    }
+
+    function applyFilters() {
+        const query = document.getElementById('locSearchInput').value.trim().toUpperCase();
+        const cards = document.querySelectorAll('.loc-card-item');
+        let visibleCount = 0;
+
+        cards.forEach(card => {
+            const code = card.dataset.code.toUpperCase();
+            const zone = card.dataset.zone;
+            const rack = card.dataset.rack;
+
+            let matchZone = !filterZone || code.startsWith(filterZone + '-');
+            let matchRack = !filterRack || rack === filterRack;
+            let matchQuery = !query || code.includes(query);
+
+            if (matchZone && matchRack && matchQuery) {
+                card.style.display = 'block';
+                visibleCount++;
+            } else {
+                card.style.display = 'none';
+            }
+        });
+
+        document.getElementById('displayCountBadge').innerText = `표시: ${visibleCount}곳`;
+    }
+
+    function printFilteredLabels() {
+        const query = document.getElementById('locSearchInput').value.trim().toUpperCase();
+        const printCards = document.querySelectorAll('.print-loc-card');
+
+        printCards.forEach(card => {
+            const code = card.dataset.code.toUpperCase();
+            const rack = card.dataset.rack;
+
+            let matchZone = !filterZone || code.startsWith(filterZone + '-');
+            let matchRack = !filterRack || rack === filterRack;
+            let matchQuery = !query || code.includes(query);
+
+            if (matchZone && matchRack && matchQuery) {
+                card.style.display = 'flex';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+
+        window.print();
+        location.reload();
+    }
+
     function updatePreviewCode() {
         const zone = document.getElementById('selZone').value;
         const rack = document.getElementById('selRack').value;
@@ -242,7 +324,7 @@
     }
 
     function generateStandardSet() {
-        if (!confirm("A구역과 B구역의 1~5번 렉(각 1~4층) 기본 보관장소들을 일괄 생성하시겠습니까?")) return;
+        if (!confirm("A/B구역 1~5번 렉 (1~5층, 박스 0~3번) 보관장소를 일괄 생성하시겠습니까?")) return;
 
         fetch('/api/locations/generate_standard', { method: 'POST' })
         .then(res => res.json())
@@ -257,7 +339,7 @@
         printArea.innerHTML = `
             <div class="location-label-card">
                 <div style="flex: 1; padding-right: 6px;">
-                    <div style="font-size: 8.5pt; font-weight: bold; color: #333;">카에루몰 보관장소</div>
+                    <div style="font-size: 8.5pt; font-weight: bold; color: #444;">카에루몰 보관장소</div>
                     <div style="font-size: 24pt; font-weight: 900; line-height: 1.1; color: #000; letter-spacing: -1px;">${code}</div>
                     <div style="font-size: 9pt; font-weight: bold; color: #111; margin-top: 3px;">${name}</div>
                     <div style="font-size: 6.5pt; color: #666; margin-top: 5px;">스마트폰 스캔 입고 매핑</div>
