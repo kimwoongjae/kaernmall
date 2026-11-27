@@ -1,8 +1,32 @@
 import sqlite3
 import os
+import re
 import datetime
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "warehouse.db")
+
+def parse_location_name(code):
+    """
+    자리 코드 규칙 해석 (예: A-110, B-321)
+    - A/B: 구역
+    - 1~5: 100번대 (1~5번 렉)
+    - 1~9: 10번대 (층수)
+    - 0~9: 1번대 (0은 기본 통선반, 1~9는 층 내 세부 박스 번호)
+    """
+    code_clean = code.strip().upper()
+    if code_clean.startswith("LOC:"):
+        code_clean = code_clean[4:].strip()
+
+    m = re.match(r'^([AB])-([1-5])(\d)(\d)$', code_clean)
+    if m:
+        zone = f"{m.group(1)}구역"
+        rack = f"{m.group(2)}번 렉"
+        floor = f"{m.group(3)}층"
+        box_num = int(m.group(4))
+        box = f" ({box_num}번 박스)" if box_num > 0 else ""
+        return f"{zone} {rack} {floor}{box}", f"{m.group(1)}구역"
+
+    return code_clean, "기타"
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
@@ -52,21 +76,28 @@ def init_db():
             )
         """)
 
-        # 기본 샘플 로케이션 생성 (A존, B존 등)
-        sample_locs = [
-            ("A-01", "A존 1번 선반", "A존"),
-            ("A-02", "A존 2번 선반", "A존"),
-            ("A-03", "A존 3번 선반", "A존"),
-            ("B-01", "B존 1번 선반", "B존"),
-            ("B-02", "B존 2번 선반", "B존"),
-            ("B-03", "B존 3번 선반", "B존"),
-            ("임시보관", "입고 대기 임시구역", "임시"),
-        ]
+        # 기존 임시 샘플 자리(A-01, B-01 등) 정리
+        conn.execute("DELETE FROM locations WHERE code IN ('A-01', 'A-02', 'A-03', 'B-01', 'B-02', 'B-03', '임시보관')")
+
+        # 표준 자리 자동 생성:
+        # 구역: A, B
+        # 렉: 1~5 (100번대)
+        # 층: 1~4층 (10, 20, 30, 40)
+        # 박스: 0 (기본)
+        standard_locations = []
+        for zone_char in ['A', 'B']:
+            for rack_num in range(1, 6): # 100 ~ 500번 렉
+                for floor_num in range(1, 5): # 1~4층
+                    code = f"{zone_char}-{rack_num}{floor_num}0"
+                    name, zone = parse_location_name(code)
+                    standard_locations.append((code, name, zone))
+
         conn.executemany("""
             INSERT OR IGNORE INTO locations (code, name, zone) VALUES (?, ?, ?)
-        """, sample_locs)
+        """, standard_locations)
+
     conn.close()
 
 if __name__ == "__main__":
     init_db()
-    print("Database initialized successfully at", DB_PATH)
+    print("Database initialized with A-110 style standard locations.")

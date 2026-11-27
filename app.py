@@ -82,118 +82,191 @@ def generate_qr(text):
 # --------------------------------------------------------------------------
 # REST API
 # --------------------------------------------------------------------------
+def is_location_qr(text, conn):
+    """장소 QR 코드인지 판별 (LOC: 접두어 또는 A-110 규격 또는 DB 등록여부)"""
+    cleaned = text.strip().upper()
+    if cleaned.startswith("LOC:"):
+        cleaned = cleaned[4:].strip()
+
+    # A-110, B-321 등 사용자 규격 패턴 검사
+    if re.match(r'^[AB]-[1-5]\d{2}$', cleaned):
+        return True, cleaned
+
+    # DB에 등록된 자리인지 검사
+    row = conn.execute("SELECT code, name FROM locations WHERE code = ?", (cleaned,)).fetchone()
+    if row:
+        return True, row["code"]
+
+    return False, ""
+
 @app.route("/api/scan", methods=["POST"])
 def api_scan():
     """
-    모바일 스캔 데이터 수신 및 파싱/저장
-    - 라벨 QR 텍스트:
-      줄바꿈으로 번호들과 마지막에 고객명이 들어옴 (예: 1124833\n1124834\n김소영)
-    - 또는 단건: 1123531\n조정인
-    - 자리 QR인 경우: code가 들어오거나 'LOC:A-01' 형태
+    지능형 양방향 스캔 API:
+    1. 상품 라벨 먼저 스캔 -> 장소 스캔 시 자동 저장!
+    2. 장소 먼저 스캔 -> 상품 라벨 스캔 시 자동 저장!
+    3. 연속 상품 스캔 가능!
     """
     data = request.json or {}
     scanned_text = data.get("qr_text", "").strip()
     current_location = data.get("location", "").strip()
     worker = data.get("worker", "작업자").strip() or "작업자"
+    pending_items = data.get("pending_items", []) # 상품 먼저 스캔 시 대기 중인 상품 목록
+    pending_customer = data.get("pending_customer", "고객")
 
     if not scanned_text:
         return jsonify({"success": False, "message": "스캔된 데이터가 없습니다."}), 400
 
     conn = database.get_connection()
 
-    # 1. 자리(로케이션) QR인지 판정
-    # 'LOC:A-01' 또는 등록된 자리 코드인 경우
-    loc_code = scanned_text
-    if loc_code.upper().startswith("LOC:"):
-        loc_code = loc_code[4:].strip()
+    # 1. 스캔된 텍스트가 [장소(로케이션) QR] 인지 판정
+    is_loc, loc_code = is_location_qr(scanned_text, conn)
 
-    loc_exists = conn.execute("SELECT code, name FROM locations WHERE code = ?", (loc_code,)).fetchone()
-    if loc_exists or scanned_text.upper().startswith("LOC:"):
+    if is_loc:
+        # 장소 정보 조회/생성
+        loc_row = conn.execute("SELECT code, name, zone FROM locations WHERE code = ?", (loc_code,)).fetchone()
+        if not loc_row:
+            # 규격에 맞으나 DB에 아직 없으면 자동 등록
+            loc_name, loc_zone = database.parse_location_name(loc_code)
+            with conn:
+                conn.execute("INSERT OR IGNORE INTO locations (code, name, zone) VALUES (?, ?, ?)", (loc_code, loc_name, loc_zone))
+            loc_row = {"code": loc_code, "name": loc_name, "zone": loc_zone}
+
+        # 만약 이미 스캔해 둔 대기 상품(pending_items)이 있다면 ➡️ 장소 스캔 즉시 자동 저장!
+        if pending_items and len(pending_items) > 0:
+            saved_items = []
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with conn:
+                for num in pending_items:
+                    num_str = str(num).strip()
+                    existing = conn.execute("SELECT * FROM items WHERE item_number = ?", (num_str,)).fetchone()
+                    if existing:
+                        conn.execute("""
+                            UPDATE items
+                            SET customer_name = ?, location_code = ?, status = '보관중', worker = ?, updated_at = ?
+                            WHERE item_number = ?
+                        """, (pending_customer, loc_code, worker, now_str, num_str))
+                        action_text = f"자리이동 ({existing['location_code']} ➡️ {loc_code})"
+                    else:
+                        conn.execute("""
+                            INSERT INTO items (item_number, customer_name, location_code, status, worker, created_at, updated_at)
+                            VALUES (?, ?, ?, '보관중', ?, ?, ?)
+                        """, (num_str, pending_customer, loc_code, worker, now_str, now_str))
+                        action_text = f"신규입고 ({loc_code})"
+
+                    conn.execute("""
+                        INSERT INTO scan_logs (item_number, customer_name, location_code, action, worker, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (num_str, pending_customer, loc_code, action_text, worker, now_str))
+
+                    saved_items.append({
+                        "item_number": num_str,
+                        "customer_name": pending_customer,
+                        "location": loc_code,
+                        "action": action_text,
+                        "time": now_str
+                    })
+
+            conn.close()
+            return jsonify({
+                "success": True,
+                "type": "auto_matched_saved",
+                "items": saved_items,
+                "count": len(saved_items),
+                "customer": pending_customer,
+                "location": loc_code,
+                "location_name": loc_row["name"],
+                "message": f"🎉 {pending_customer} ({len(saved_items)}건) ➡️ [{loc_code}]에 자동 매칭 저장 완료!"
+            })
+
+        # 대기 상품이 없으면 장소 지정
         conn.close()
         return jsonify({
             "success": True,
             "type": "location_set",
-            "location_code": loc_exists["code"] if loc_exists else loc_code,
-            "location_name": loc_exists["name"] if loc_exists else loc_code,
-            "message": f"📍 자리 '{loc_exists['code'] if loc_exists else loc_code}'(으)로 설정되었습니다."
+            "location_code": loc_row["code"],
+            "location_name": loc_row["name"],
+            "message": f"📍 보관 장소가 '{loc_row['code']}'({loc_row['name']})로 설정되었습니다."
         })
 
-    # 2. 상품 라벨지 QR 파싱
-    if not current_location:
-        conn.close()
-        return jsonify({
-            "success": False,
-            "message": "⚠️ 먼저 자리를 지정하거나 자리 QR코드를 먼저 스캔해주세요!"
-        }), 400
-
+    # 2. 스캔된 텍스트가 [상품 라벨지 QR] 인 경우
     lines = [line.strip() for line in scanned_text.splitlines() if line.strip()]
     numbers = []
     customer_name = "고객"
 
     for line in lines:
         cleaned_num = re.sub(r'[^0-9]', '', line)
-        if cleaned_num and len(cleaned_num) >= 4 and len(cleaned_num) <= 10:
+        if cleaned_num and 4 <= len(cleaned_num) <= 10:
             numbers.append(cleaned_num)
         else:
-            # 숫자가 아닌 줄은 고객명으로 인식
             name_cand = re.sub(r'[\r\n\t]+', '', line).strip()
-            if name_cand and not name_cand.startswith("http"):
+            if name_cand and not name_cand.startswith("http") and not name_cand.upper().startswith("LOC:"):
                 customer_name = name_cand
 
     if not numbers:
-        # 혹시 전체 텍스트에서 6~8자리 숫자들 추출 시도
         found_nums = re.findall(r'\b\d{6,8}\b', scanned_text)
         if found_nums:
             numbers = found_nums
 
     if not numbers:
         conn.close()
-        return jsonify({"success": False, "message": "스캔 내용에서 상품 접수번호를 찾을 수 없습니다."}), 400
+        return jsonify({"success": False, "message": "스캔 내용에서 상품 번호를 찾을 수 없습니다."}), 400
 
-    # DB에 저장 / 업데이트
-    saved_items = []
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 만약 현재 지정된 장소가 있다면 ➡️ 바로 저장!
+    if current_location:
+        saved_items = []
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    with conn:
-        for num in numbers:
-            # 기존 등록 여부 확인
-            existing = conn.execute("SELECT * FROM items WHERE item_number = ?", (num,)).fetchone()
-            if existing:
+        with conn:
+            for num in numbers:
+                existing = conn.execute("SELECT * FROM items WHERE item_number = ?", (num,)).fetchone()
+                if existing:
+                    conn.execute("""
+                        UPDATE items
+                        SET customer_name = ?, location_code = ?, status = '보관중', worker = ?, updated_at = ?
+                        WHERE item_number = ?
+                    """, (customer_name, current_location, worker, now_str, num))
+                    action_text = f"자리이동 ({existing['location_code']} ➡️ {current_location})"
+                else:
+                    conn.execute("""
+                        INSERT INTO items (item_number, customer_name, location_code, status, worker, created_at, updated_at)
+                        VALUES (?, ?, ?, '보관중', ?, ?, ?)
+                    """, (num, customer_name, current_location, worker, now_str, now_str))
+                    action_text = f"신규입고 ({current_location})"
+
                 conn.execute("""
-                    UPDATE items
-                    SET customer_name = ?, location_code = ?, status = '보관중', worker = ?, updated_at = ?
-                    WHERE item_number = ?
-                """, (customer_name, current_location, worker, now_str, num))
-                action_text = f"자리이동 ({existing['location_code']} ➡️ {current_location})"
-            else:
-                conn.execute("""
-                    INSERT INTO items (item_number, customer_name, location_code, status, worker, created_at, updated_at)
-                    VALUES (?, ?, ?, '보관중', ?, ?, ?)
-                """, (num, customer_name, current_location, worker, now_str, now_str))
-                action_text = f"신규입고 ({current_location})"
+                    INSERT INTO scan_logs (item_number, customer_name, location_code, action, worker, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (num, customer_name, current_location, action_text, worker, now_str))
 
-            conn.execute("""
-                INSERT INTO scan_logs (item_number, customer_name, location_code, action, worker, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (num, customer_name, current_location, action_text, worker, now_str))
+                saved_items.append({
+                    "item_number": num,
+                    "customer_name": customer_name,
+                    "location": current_location,
+                    "action": action_text,
+                    "time": now_str
+                })
 
-            saved_items.append({
-                "item_number": num,
-                "customer_name": customer_name,
-                "location": current_location,
-                "action": action_text,
-                "time": now_str
-            })
+        conn.close()
+        return jsonify({
+            "success": True,
+            "type": "item_saved",
+            "items": saved_items,
+            "count": len(saved_items),
+            "customer": customer_name,
+            "location": current_location,
+            "message": f"✅ {customer_name} ({len(saved_items)}건) ➡️ [{current_location}] 저장 완료!"
+        })
 
+    # 만약 지정된 장소가 없다면 ➡️ 상품 대기 상태로 반환 (장소 스캔 유도)
     conn.close()
     return jsonify({
         "success": True,
-        "type": "item_saved",
-        "items": saved_items,
-        "count": len(saved_items),
-        "customer": customer_name,
-        "location": current_location,
-        "message": f"✅ {customer_name} ({len(saved_items)}건) ➡️ [{current_location}] 저장 완료!"
+        "type": "item_pending",
+        "pending_items": numbers,
+        "pending_customer": customer_name,
+        "count": len(numbers),
+        "message": f"📦 상품 인식: {customer_name} ({len(numbers)}건) ➡️ 이제 선반의 [장소 QR]을 스캔하세요!"
     })
 
 @app.route("/api/inventory", methods=["GET"])
@@ -249,22 +322,39 @@ def api_checkout():
 @app.route("/api/locations/add", methods=["POST"])
 def api_locations_add():
     data = request.json or {}
-    code = data.get("code", "").strip()
-    name = data.get("name", "").strip() or code
-    zone = data.get("zone", "").strip() or "기본"
+    zone_val = data.get("zone", "A").strip().upper()
+    rack_val = data.get("rack", "1").strip()
+    floor_val = data.get("floor", "1").strip()
+    box_val = data.get("box", "0").strip()
 
-    if not code:
-        return jsonify({"success": False, "message": "자리 코드를 입력해주세요."}), 400
+    code = f"{zone_val}-{rack_val}{floor_val}{box_val}"
+    name, zone = database.parse_location_name(code)
 
     conn = database.get_connection()
     try:
         with conn:
-            conn.execute("INSERT INTO locations (code, name, zone) VALUES (?, ?, ?)", (code, name, zone))
+            conn.execute("INSERT OR REPLACE INTO locations (code, name, zone) VALUES (?, ?, ?)", (code, name, zone))
         conn.close()
-        return jsonify({"success": True, "message": f"자리 '{code}' 추가 완료"})
+        return jsonify({"success": True, "code": code, "name": name, "message": f"자리 '{code}' ({name}) 추가 완료"})
     except Exception as e:
         conn.close()
         return jsonify({"success": False, "message": str(e)}), 400
+
+@app.route("/api/locations/generate_standard", methods=["POST"])
+def api_locations_generate_standard():
+    """A구역, B구역 1~5번 렉 (1~4층) 표준 세트 일괄 생성"""
+    conn = database.get_connection()
+    count = 0
+    with conn:
+        for zone_char in ['A', 'B']:
+            for rack_num in range(1, 6): # 100~500번 렉
+                for floor_num in range(1, 5): # 1~4층
+                    code = f"{zone_char}-{rack_num}{floor_num}0"
+                    name, zone = database.parse_location_name(code)
+                    conn.execute("INSERT OR IGNORE INTO locations (code, name, zone) VALUES (?, ?, ?)", (code, name, zone))
+                    count += 1
+    conn.close()
+    return jsonify({"success": True, "message": f"표준 보관장소 {count}개 일괄 생성 완료!"})
 
 if __name__ == "__main__":
     local_ip = get_local_ip()
