@@ -9,14 +9,20 @@
         margin: 0;
     }
     @media print {
+        @page {
+            size: 60mm 40mm;
+            margin: 0;
+        }
         html, body {
             width: 60mm !important;
             height: 40mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
-        .navbar, .bottom-nav, .no-print {
+        .navbar, .bottom-nav, .no-print, header, footer {
             display: none !important;
         }
         .print-container {
@@ -27,11 +33,15 @@
         .location-label-card {
             width: 60mm !important;
             height: 40mm !important;
+            max-width: 60mm !important;
+            max-height: 40mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             page-break-inside: avoid !important;
-            border: 2px solid #000 !important;
-            padding: 2mm 3mm !important;
+            break-after: page !important;
+            break-inside: avoid !important;
+            border: 1.5px solid #000 !important;
+            padding: 2.5mm 3mm !important;
             display: flex !important;
             flex-direction: row !important;
             align-items: center !important;
@@ -121,7 +131,7 @@
             <div class="card p-2 shadow-sm h-100 position-relative border">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="badge bg-secondary" style="font-size: 0.7rem;">{{ loc.zone }}</span>
-                    <button class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" onclick="printSingleLabel('{{ loc.code }}')">
+                    <button class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" onclick="printSingleLabel('{{ loc.code }}', '{{ loc.name }}')">
                         <i class="bi bi-printer me-1"></i>인쇄
                     </button>
                 </div>
@@ -138,17 +148,20 @@
     </div>
 </div>
 
-<!-- 4. 라벨기(60x40mm) 인쇄 전용 영역: 딱 번호와 QR코드만 출력! -->
+<!-- 4. 라벨기(60x40mm) 인쇄 전용 영역: 코드 + 명칭(밑) + QR코드(우측) -->
 <div class="print-container" style="display:none;" id="printArea">
     {% for loc in locations %}
     <div class="location-label-card print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
-        <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding-right: 2mm;">
-            <div style="font-size: 26pt; font-weight: 900; line-height: 1.0; color: #000; letter-spacing: -0.5px; white-space: nowrap;">
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
+            <div style="font-size: 26pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                 {{ loc.code }}
             </div>
+            <div style="font-size: 11pt; font-weight: 700; color: #111; margin-top: 3.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                {{ loc.name }}
+            </div>
         </div>
-        <div style="display: flex; align-items: center; justify-content: center;">
-            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 32mm; height: 32mm; object-fit: contain;">
+        <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 29mm; height: 29mm; object-fit: contain; display: block;">
         </div>
     </div>
     {% endfor %}
@@ -345,17 +358,20 @@
         });
     }
 
-    function printSingleLabel(code) {
+    function printSingleLabel(code, name) {
         const printArea = document.getElementById('printArea');
         printArea.innerHTML = `
             <div class="location-label-card">
-                <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding-right: 2mm;">
-                    <div style="font-size: 26pt; font-weight: 900; line-height: 1.0; color: #000; letter-spacing: -0.5px; white-space: nowrap;">
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
+                    <div style="font-size: 26pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                         ${code}
                     </div>
+                    <div style="font-size: 11pt; font-weight: 700; color: #111; margin-top: 3.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                        ${name || ''}
+                    </div>
                 </div>
-                <div style="display: flex; align-items: center; justify-content: center;">
-                    <img src="/qr/LOC:${code}" alt="QR" style="width: 32mm; height: 32mm; object-fit: contain;">
+                <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <img src="/qr/LOC:${code}" alt="QR" style="width: 29mm; height: 29mm; object-fit: contain; display: block;">
                 </div>
             </div>
         `;
