@@ -14,13 +14,13 @@
 
     <!-- 검색 필터 폼 -->
     <div class="row g-2 mb-2">
-        <div class="col-12 col-md-5">
+        <div class="col-12 col-md-3">
             <div class="input-group">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
-                <input type="text" id="searchInput" class="form-control" placeholder="접수번호, 고객명, 작업자 검색..." onkeyup="if(event.key==='Enter') loadInventory()">
+                <input type="text" id="searchInput" class="form-control" placeholder="접수번호, 고객명, 작업자..." onkeyup="if(event.key==='Enter') loadInventory()">
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md-2">
             <select id="locFilter" class="form-select" onchange="loadInventory()">
                 <option value="">모든 자리 (전체)</option>
                 {% for loc in locations %}
@@ -35,7 +35,15 @@
                 <option value="전체">상태 전체</option>
             </select>
         </div>
-        <div class="col-12 col-md-2 d-grid">
+        <!-- 날짜 필터 (시작일 ~ 종료일) -->
+        <div class="col-12 col-md-3">
+            <div class="input-group">
+                <input type="date" id="startDateFilter" class="form-control" onchange="loadInventory()" title="시작일">
+                <span class="input-group-text">~</span>
+                <input type="date" id="endDateFilter" class="form-control" onchange="loadInventory()" title="종료일">
+            </div>
+        </div>
+        <div class="col-12 col-md-2 d-grid gap-1">
             <button class="btn btn-primary fw-bold" onclick="loadInventory()"><i class="bi bi-arrow-repeat me-1"></i> 조회</button>
         </div>
     </div>
@@ -43,7 +51,7 @@
 
 <!-- 다중 선택 일괄 액션 바 -->
 <div class="card p-2 mb-2 shadow-sm bg-light" id="batchActionBar">
-    <div class="d-flex justify-content-between align-items-center">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center">
             <div class="form-check me-3 mb-0">
                 <input class="form-check-input" type="checkbox" id="selectAllCheck" onchange="toggleSelectAll(this)">
@@ -52,6 +60,9 @@
             <span class="small text-muted" id="selectedCountText">선택된 항목: 0개</span>
         </div>
         <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-success fw-bold" id="btnExportExcel" onclick="downloadSelectedExcel()" disabled>
+                <i class="bi bi-file-earmark-excel-fill me-1"></i>선택 엑셀 다운로드
+            </button>
             <button class="btn btn-sm btn-outline-danger fw-bold" id="btnBatchDelete" onclick="deleteSelectedItems()" disabled>
                 <i class="bi bi-trash3-fill me-1"></i>선택 삭제
             </button>
@@ -222,6 +233,8 @@
         const q = document.getElementById('searchInput').value.trim();
         const loc = document.getElementById('locFilter').value;
         const status = document.getElementById('statusFilter').value;
+        const startDate = document.getElementById('startDateFilter').value;
+        const endDate = document.getElementById('endDateFilter').value;
 
         const tbody = document.getElementById('inventoryTableBody');
         tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div>조회 중...</td></tr>`;
@@ -231,7 +244,11 @@
         if (selectAll) selectAll.checked = false;
         updateSelectedCount();
 
-        fetch(`/api/inventory?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&status=${encodeURIComponent(status)}`)
+        let url = `/api/inventory?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&status=${encodeURIComponent(status)}`;
+        if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
+        if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
+
+        fetch(url)
             .then(res => res.json())
             .then(data => {
                 const items = data.items || [];
@@ -309,6 +326,7 @@
         const count = checked.length;
         document.getElementById('selectedCountText').innerText = `선택된 항목: ${count}개`;
         document.getElementById('btnBatchDelete').disabled = count === 0;
+        document.getElementById('btnExportExcel').disabled = count === 0;
 
         const totalChks = document.querySelectorAll('.item-chk');
         const selectAll = document.getElementById('selectAllCheck');
@@ -320,6 +338,33 @@
     function getSelectedNumbers() {
         const checked = document.querySelectorAll('.item-chk:checked');
         return Array.from(checked).map(c => c.value);
+    }
+
+    function downloadSelectedExcel() {
+        const nums = getSelectedNumbers();
+        if (nums.length === 0) return;
+
+        // 선택된 항목들의 접수번호와 보관자리 추출
+        const numSet = new Set(nums);
+        const selectedItems = currentInventoryData.filter(it => numSet.has(it.item_number));
+
+        // UTF-8 BOM (\uFEFF)을 추가하여 엑셀에서 한글이 깨지지 않도록 CSV 생성
+        let csvContent = "\uFEFF접수번호,보관자리\n";
+        selectedItems.forEach(it => {
+            // 접수번호가 숫자로 인식되어 0이 잘리거나 지수표기 되지 않도록 문자열 서식 처리
+            csvContent += `="${it.item_number}","${it.location_code || ''}"\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const nowStr = new Date().toISOString().substring(0, 10);
+        a.href = url;
+        a.download = `카에루몰_재고목록_${nowStr}_(${selectedItems.length}건).csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 
     function deleteSelectedItems() {

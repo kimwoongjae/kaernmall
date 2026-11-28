@@ -265,6 +265,8 @@ def api_inventory():
     query = request.args.get("q", "").strip()
     status = request.args.get("status", "보관중").strip()
     location = request.args.get("location", "").strip()
+    start_date = request.args.get("start_date", "").strip()
+    end_date = request.args.get("end_date", "").strip()
 
     sql = "SELECT * FROM items WHERE 1=1"
     params = []
@@ -277,12 +279,20 @@ def api_inventory():
         sql += " AND location_code = ?"
         params.append(location)
 
+    if start_date:
+        sql += " AND date(updated_at) >= date(?)"
+        params.append(start_date)
+
+    if end_date:
+        sql += " AND date(updated_at) <= date(?)"
+        params.append(end_date)
+
     if query:
         sql += " AND (item_number LIKE ? OR customer_name LIKE ? OR worker LIKE ?)"
         wildcard = f"%{query}%"
         params.extend([wildcard, wildcard, wildcard])
 
-    sql += " ORDER BY updated_at DESC LIMIT 500"
+    sql += " ORDER BY updated_at DESC LIMIT 1000"
 
     conn = database.get_connection()
     rows = conn.execute(sql, params).fetchall()
