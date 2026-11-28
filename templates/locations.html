@@ -14,8 +14,8 @@
             margin: 0;
         }
         html, body {
-            width: 60mm !important;
-            height: 40mm !important;
+            width: 100% !important;
+            height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
@@ -31,22 +31,22 @@
             padding: 0 !important;
         }
         .location-label-card {
-            width: 60mm !important;
-            height: 40mm !important;
-            max-width: 60mm !important;
-            max-height: 40mm !important;
+            width: 54mm !important;
+            height: 35mm !important;
+            max-width: 54mm !important;
+            max-height: 35mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             page-break-inside: avoid !important;
             break-after: page !important;
             break-inside: avoid !important;
             border: 1.5px solid #000 !important;
-            padding: 2.5mm 3mm !important;
+            padding: 2mm 2.5mm !important;
             display: flex !important;
             flex-direction: row !important;
             align-items: center !important;
             justify-content: space-between !important;
-            margin: 0 !important;
+            margin: 2mm auto 0 auto !important;
             overflow: hidden !important;
             background: #fff !important;
         }
@@ -152,16 +152,16 @@
 <div class="print-container" style="display:none;" id="printArea">
     {% for loc in locations %}
     <div class="location-label-card print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
-        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
-            <div style="font-size: 26pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 1.5mm; padding-right: 1.5mm;">
+            <div style="font-size: 21pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                 {{ loc.code }}
             </div>
-            <div style="font-size: 11pt; font-weight: 700; color: #111; margin-top: 3.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+            <div style="font-size: 9.5pt; font-weight: 700; color: #111; margin-top: 3mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                 {{ loc.name }}
             </div>
         </div>
         <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 29mm; height: 29mm; object-fit: contain; display: block;">
+            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 25mm; height: 25mm; object-fit: contain; display: block;">
         </div>
     </div>
     {% endfor %}
@@ -362,16 +362,16 @@
         const printArea = document.getElementById('printArea');
         printArea.innerHTML = `
             <div class="location-label-card">
-                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
-                    <div style="font-size: 26pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 1.5mm; padding-right: 1.5mm;">
+                    <div style="font-size: 21pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                         ${code}
                     </div>
-                    <div style="font-size: 11pt; font-weight: 700; color: #111; margin-top: 3.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                    <div style="font-size: 9.5pt; font-weight: 700; color: #111; margin-top: 3mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                         ${name || ''}
                     </div>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img src="/qr/LOC:${code}" alt="QR" style="width: 29mm; height: 29mm; object-fit: contain; display: block;">
+                    <img src="/qr/LOC:${code}" alt="QR" style="width: 25mm; height: 25mm; object-fit: contain; display: block;">
                 </div>
             </div>
         `;
