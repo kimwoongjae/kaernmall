@@ -5,17 +5,17 @@
 {% block head %}
 <style>
     @page {
-        size: 60mm 40mm landscape;
+        size: 40mm 60mm portrait;
         margin: 0;
     }
     @media print {
         @page {
-            size: 60mm 40mm landscape;
+            size: 40mm 60mm portrait;
             margin: 0;
         }
         html, body {
-            width: 60mm !important;
-            height: 40mm !important;
+            width: 40mm !important;
+            height: 60mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
@@ -29,28 +29,29 @@
             display: block !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 60mm !important;
-            height: 40mm !important;
+            width: 40mm !important;
+            height: 60mm !important;
         }
         .location-label-card {
-            width: 58mm !important;
-            height: 38mm !important;
-            max-width: 58mm !important;
-            max-height: 38mm !important;
+            width: 38mm !important;
+            height: 56mm !important;
+            max-width: 38mm !important;
+            max-height: 56mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             page-break-inside: avoid !important;
             break-after: page !important;
             break-inside: avoid !important;
             border: 1.5px solid #000 !important;
-            padding: 2mm !important;
+            padding: 2.5mm 1.5mm !important;
             display: flex !important;
-            flex-direction: row !important;
+            flex-direction: column !important;
             align-items: center !important;
             justify-content: space-between !important;
-            margin: 0 auto !important;
+            margin: 1.5mm auto 0 auto !important;
             overflow: hidden !important;
             background: #fff !important;
+            text-align: center !important;
         }
     }
     .rule-badge {
@@ -150,20 +151,20 @@
     </div>
 </div>
 
-<!-- 4. 라벨기(60x40mm) 인쇄 전용 영역: 코드 + 명칭(밑) + QR코드(우측) -->
+<!-- 4. 라벨기(세로 40x60mm 기준) 인쇄 전용 영역: 상단 코드 + 렉설명 + 하단 QR코드 -->
 <div class="print-container" style="display:none;" id="printArea">
     {% for loc in locations %}
     <div class="location-label-card print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
-        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 1.5mm; padding-right: 1.5mm;">
-            <div style="font-size: 23pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 1.5mm;">
+            <div style="font-size: 20pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                 {{ loc.code }}
             </div>
-            <div style="font-size: 10pt; font-weight: 700; color: #111; margin-top: 3mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+            <div style="font-size: 8.5pt; font-weight: 700; color: #111; margin-top: 1.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                 {{ loc.name }}
             </div>
         </div>
-        <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 27mm; height: 27mm; object-fit: contain; display: block;">
+        <div style="width: 100%; display: flex; align-items: center; justify-content: center; padding-bottom: 1.5mm;">
+            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 30mm; height: 30mm; object-fit: contain; display: block;">
         </div>
     </div>
     {% endfor %}
@@ -364,16 +365,16 @@
         const printArea = document.getElementById('printArea');
         printArea.innerHTML = `
             <div class="location-label-card">
-                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 1.5mm; padding-right: 1.5mm;">
-                    <div style="font-size: 23pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 1.5mm;">
+                    <div style="font-size: 20pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                         ${code}
                     </div>
-                    <div style="font-size: 10pt; font-weight: 700; color: #111; margin-top: 3mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                    <div style="font-size: 8.5pt; font-weight: 700; color: #111; margin-top: 1.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                         ${name || ''}
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img src="/qr/LOC:${code}" alt="QR" style="width: 27mm; height: 27mm; object-fit: contain; display: block;">
+                <div style="width: 100%; display: flex; align-items: center; justify-content: center; padding-bottom: 1.5mm;">
+                    <img src="/qr/LOC:${code}" alt="QR" style="width: 30mm; height: 30mm; object-fit: contain; display: block;">
                 </div>
             </div>
         `;
