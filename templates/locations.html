@@ -5,17 +5,17 @@
 {% block head %}
 <style>
     @page {
-        size: 40mm 60mm portrait;
+        size: 60mm 40mm;
         margin: 0;
     }
     @media print {
         @page {
-            size: 40mm 60mm portrait;
+            size: 60mm 40mm;
             margin: 0;
         }
         html, body {
-            width: 40mm !important;
-            height: 60mm !important;
+            width: 60mm !important;
+            height: 40mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
@@ -30,13 +30,13 @@
             display: block !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 40mm !important;
-            height: 60mm !important;
+            width: 60mm !important;
         }
-        /* 프린터는 세로(40mm폭x60mm길이)로 급지되지만, 내용은 90도 회전하여 가로(60x40) 형태로 똑바르게 인쇄 */
         .page-wrapper {
-            width: 40mm !important;
-            height: 60mm !important;
+            width: 60mm !important;
+            height: 40mm !important;
+            max-width: 60mm !important;
+            max-height: 40mm !important;
             page-break-after: always !important;
             page-break-inside: avoid !important;
             break-after: page !important;
@@ -46,19 +46,27 @@
             align-items: center !important;
             justify-content: center !important;
             overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-sizing: border-box !important;
+        }
+        .page-wrapper:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
         }
         .location-label-card {
             width: 54mm !important;
-            height: 35mm !important;
+            height: 34mm !important;
+            max-width: 54mm !important;
+            max-height: 34mm !important;
             box-sizing: border-box !important;
             border: 1.5px solid #000 !important;
+            border-radius: 4px !important;
             padding: 2mm 3mm !important;
             display: flex !important;
             flex-direction: row !important;
             align-items: center !important;
             justify-content: space-between !important;
-            transform: rotate(90deg) !important;
-            transform-origin: center center !important;
             background: #fff !important;
             overflow: hidden !important;
         }
@@ -129,6 +137,10 @@
                 </button>
             </div>
         </div>
+        <div class="alert alert-light border py-1 px-2 mb-2 small text-muted d-flex align-items-center">
+            <i class="bi bi-info-circle-fill text-primary me-2"></i>
+            <span><strong>60×40mm 라벨 인쇄 안내:</strong> 인쇄 창에서 <strong>[여백: 없음]</strong> 및 <strong>[머리글과 바닥글: 체크 해제]</strong>를 해주셔야 1장에 딱 맞게 출력됩니다.</span>
+        </div>
         <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
             <input type="text" id="locSearchInput" class="form-control" placeholder="장소 코드 직접 검색 (예: A-111, B-320)..." oninput="applyFilters()">
@@ -160,13 +172,13 @@
     </div>
 </div>
 
-<!-- 4. 라벨기 인쇄 전용 영역: 세로 급지 규격에 맞춰 90도 회전된 가로형 데이터 출력 -->
+<!-- 4. 라벨기 인쇄 전용 영역: 60x40mm 가로형 정방향 출력 -->
 <div class="print-container" style="display:none;" id="printArea">
     {% for loc in locations %}
     <div class="page-wrapper print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
         <div class="location-label-card">
             <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
-                <div style="font-size: 21pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                <div style="font-size: 22pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                     {{ loc.code }}
                 </div>
                 <div style="font-size: 9.5pt; font-weight: 700; color: #111; margin-top: 2.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
@@ -378,7 +390,7 @@
             <div class="page-wrapper">
                 <div class="location-label-card">
                     <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
-                        <div style="font-size: 21pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                        <div style="font-size: 22pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
                             ${code}
                         </div>
                         <div style="font-size: 9.5pt; font-weight: 700; color: #111; margin-top: 2.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
