@@ -2,6 +2,11 @@
 
 {% block title %}재고 및 자리 조회 - 카에루몰 창고 시스템{% endblock %}
 
+{% block head %}
+<!-- SheetJS (진짜 엑셀 .xlsx 생성 라이브러리) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="card p-3 mb-3 shadow-sm">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -30,9 +35,9 @@
         </div>
         <div class="col-6 col-md-2">
             <select id="statusFilter" class="form-select" onchange="loadInventory()">
-                <option value="보관중" selected>보관중</option>
+                <option value="전체" selected>상태 전체</option>
+                <option value="보관중">보관중</option>
                 <option value="출고완료">출고완료</option>
-                <option value="전체">상태 전체</option>
             </select>
         </div>
         <!-- 날짜 필터 (시작일 ~ 종료일) -->
@@ -204,8 +209,7 @@
     // 2. 서버 재부팅(Render) 시 자동 복원 동기화
     async function checkAndSyncLocalBackup(serverCount) {
         const localItems = getLocalBackup();
-        if (serverCount === 0 && localItems.length > 0) {
-            // 서버 DB가 비어있는데 브라우저에 백업이 있으면 자동 복원 요청!
+        if (localItems.length > 0) {
             console.log("Restoring server from local permanent storage...", localItems.length);
             try {
                 const res = await fetch('/api/inventory/sync', {
@@ -216,7 +220,6 @@
                 const resData = await res.json();
                 if (resData.success && resData.synced_count > 0) {
                     console.log(`Auto restored ${resData.synced_count} items from permanent browser storage!`);
-                    // 재조회
                     fetchInventoryData();
                 }
             } catch(e) {
@@ -251,16 +254,23 @@
         fetch(url)
             .then(res => res.json())
             .then(data => {
-                const items = data.items || [];
+                let items = data.items || [];
                 currentInventoryData = items;
-                document.getElementById('totalCountBadge').innerText = `${data.count}건`;
+                document.getElementById('totalCountBadge').innerText = `${items.length}건`;
 
                 // 로컬스토리지에 저장된 항목 업데이트
                 if (items.length > 0) {
                     saveLocalBackup(items);
-                } else if (!q && !loc && (status === '보관중' || status === '전체')) {
-                    // 검색 필터가 없는데 0건이면 서버 리셋 가능성 -> 복원 검사
-                    checkAndSyncLocalBackup(0);
+                } else if (!q && !loc && !startDate && !endDate) {
+                    // 서버 DB가 비어있는 경우 브라우저 로컬 저장소에서 데이터 자동 복원 및 즉시 표시
+                    const localBackup = getLocalBackup();
+                    if (localBackup.length > 0) {
+                        currentInventoryData = localBackup;
+                        document.getElementById('totalCountBadge').innerText = `${localBackup.length}건 (로컬보관)`;
+                        renderTableRows(localBackup);
+                        checkAndSyncLocalBackup(0);
+                        return;
+                    }
                 }
 
                 if (items.length === 0) {
@@ -271,7 +281,15 @@
                 renderTableRows(items);
             })
             .catch(err => {
-                tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-danger">조회 오류: ${err}</td></tr>`;
+                // 통신 오류 발생 시에도 로컬 보관 데이터로 즉시 보여줌
+                const localBackup = getLocalBackup();
+                if (localBackup.length > 0) {
+                    currentInventoryData = localBackup;
+                    document.getElementById('totalCountBadge').innerText = `${localBackup.length}건 (오프라인)`;
+                    renderTableRows(localBackup);
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-danger">조회 오류: ${err}</td></tr>`;
+                }
             });
     }
 
@@ -348,23 +366,30 @@
         const numSet = new Set(nums);
         const selectedItems = currentInventoryData.filter(it => numSet.has(it.item_number));
 
-        // UTF-8 BOM (\uFEFF)을 추가하여 엑셀에서 한글이 깨지지 않도록 CSV 생성
-        let csvContent = "\uFEFF접수번호,보관자리\n";
+        // 접수번호에 따옴표나 기타 기호 없이 순수 원본 텍스트 그대로 생성
+        // SheetJS (XLSX) 라이브러리를 사용하여 진짜 .xlsx 파일 생성
+        const excelData = [
+            ["접수번호", "보관자리"] // 헤더
+        ];
+
         selectedItems.forEach(it => {
-            // 접수번호가 숫자로 인식되어 0이 잘리거나 지수표기 되지 않도록 문자열 서식 처리
-            csvContent += `="${it.item_number}","${it.location_code || ''}"\n`;
+            // 접수번호와 보관자리만 아무 기호 없이 순수 문자열 그대로 행 추가
+            excelData.push([String(it.item_number).trim(), String(it.location_code || '').trim()]);
         });
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        // 워크시트 생성 (모든 셀을 텍스트 타입 's'로 지정하여 왜곡/기호 추가 방지)
+        const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+        // 컬럼 너비 지정
+        ws['!cols'] = [{ wch: 18 }, { wch: 15 }];
+
+        // 워크북 생성 및 시트 추가
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "재고목록");
+
+        // 엑셀(.xlsx) 파일 다운로드 실행
         const nowStr = new Date().toISOString().substring(0, 10);
-        a.href = url;
-        a.download = `카에루몰_재고목록_${nowStr}_(${selectedItems.length}건).csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        XLSX.writeFile(wb, `카에루몰_재고목록_${nowStr}_(${selectedItems.length}건).xlsx`);
     }
 
     function deleteSelectedItems() {
