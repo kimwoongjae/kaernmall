@@ -21,6 +21,7 @@
             background: #fff !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            overflow: hidden !important;
         }
         .navbar, .bottom-nav, .no-print, header, footer {
             display: none !important;
@@ -32,26 +33,34 @@
             width: 40mm !important;
             height: 60mm !important;
         }
-        .location-label-card {
-            width: 38mm !important;
-            height: 56mm !important;
-            max-width: 38mm !important;
-            max-height: 56mm !important;
-            box-sizing: border-box !important;
+        /* 프린터는 세로(40mm폭x60mm길이)로 급지되지만, 내용은 90도 회전하여 가로(60x40) 형태로 똑바르게 인쇄 */
+        .page-wrapper {
+            width: 40mm !important;
+            height: 60mm !important;
             page-break-after: always !important;
             page-break-inside: avoid !important;
             break-after: page !important;
             break-inside: avoid !important;
-            border: 1.5px solid #000 !important;
-            padding: 2.5mm 1.5mm !important;
+            position: relative !important;
             display: flex !important;
-            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            overflow: hidden !important;
+        }
+        .location-label-card {
+            width: 54mm !important;
+            height: 35mm !important;
+            box-sizing: border-box !important;
+            border: 1.5px solid #000 !important;
+            padding: 2mm 3mm !important;
+            display: flex !important;
+            flex-direction: row !important;
             align-items: center !important;
             justify-content: space-between !important;
-            margin: 1.5mm auto 0 auto !important;
-            overflow: hidden !important;
+            transform: rotate(90deg) !important;
+            transform-origin: center center !important;
             background: #fff !important;
-            text-align: center !important;
+            overflow: hidden !important;
         }
     }
     .rule-badge {
@@ -151,20 +160,22 @@
     </div>
 </div>
 
-<!-- 4. 라벨기(세로 40x60mm 기준) 인쇄 전용 영역: 상단 코드 + 렉설명 + 하단 QR코드 -->
+<!-- 4. 라벨기 인쇄 전용 영역: 세로 급지 규격에 맞춰 90도 회전된 가로형 데이터 출력 -->
 <div class="print-container" style="display:none;" id="printArea">
     {% for loc in locations %}
-    <div class="location-label-card print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
-        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 1.5mm;">
-            <div style="font-size: 20pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
-                {{ loc.code }}
+    <div class="page-wrapper print-loc-card" data-code="{{ loc.code }}" data-zone="{{ loc.zone }}" data-rack="{{ loc.code[2] }}">
+        <div class="location-label-card">
+            <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
+                <div style="font-size: 21pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                    {{ loc.code }}
+                </div>
+                <div style="font-size: 9.5pt; font-weight: 700; color: #111; margin-top: 2.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                    {{ loc.name }}
+                </div>
             </div>
-            <div style="font-size: 8.5pt; font-weight: 700; color: #111; margin-top: 1.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
-                {{ loc.name }}
+            <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 25mm; height: 25mm; object-fit: contain; display: block;">
             </div>
-        </div>
-        <div style="width: 100%; display: flex; align-items: center; justify-content: center; padding-bottom: 1.5mm;">
-            <img src="/qr/LOC:{{ loc.code }}" alt="QR" style="width: 30mm; height: 30mm; object-fit: contain; display: block;">
         </div>
     </div>
     {% endfor %}
@@ -364,17 +375,19 @@
     function printSingleLabel(code, name) {
         const printArea = document.getElementById('printArea');
         printArea.innerHTML = `
-            <div class="location-label-card">
-                <div style="width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 1.5mm;">
-                    <div style="font-size: 20pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
-                        ${code}
+            <div class="page-wrapper">
+                <div class="location-label-card">
+                    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-left: 2mm; padding-right: 2mm;">
+                        <div style="font-size: 21pt; font-weight: 900; line-height: 1.05; color: #000; letter-spacing: -0.5px; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                            ${code}
+                        </div>
+                        <div style="font-size: 9.5pt; font-weight: 700; color: #111; margin-top: 2.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
+                            ${name || ''}
+                        </div>
                     </div>
-                    <div style="font-size: 8.5pt; font-weight: 700; color: #111; margin-top: 1.5mm; line-height: 1.2; white-space: nowrap; font-family: 'Malgun Gothic', sans-serif;">
-                        ${name || ''}
+                    <div style="display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                        <img src="/qr/LOC:${code}" alt="QR" style="width: 25mm; height: 25mm; object-fit: contain; display: block;">
                     </div>
-                </div>
-                <div style="width: 100%; display: flex; align-items: center; justify-content: center; padding-bottom: 1.5mm;">
-                    <img src="/qr/LOC:${code}" alt="QR" style="width: 30mm; height: 30mm; object-fit: contain; display: block;">
                 </div>
             </div>
         `;
